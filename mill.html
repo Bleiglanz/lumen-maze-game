@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>MILL — Neon Arcade</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#02000a;color:#dff;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;touch-action:none;user-select:none}
+  canvas{display:block;position:fixed;inset:0}
+  #hud{position:fixed;left:0;right:0;top:0;display:grid;grid-template-columns:repeat(4,1fr);
+    padding:14px 22px;pointer-events:none;letter-spacing:.18em;font-size:13px;text-transform:uppercase}
+  #hud div{text-shadow:0 0 8px var(--glow),0 0 22px var(--glow)}
+  #hud div:nth-child(2),#hud div:nth-child(3){text-align:center}
+  #hud div:nth-child(4){text-align:right}
+  #hud b{display:block;font-size:24px;letter-spacing:.08em;color:#fff;font-variant-numeric:tabular-nums}
+  #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;pointer-events:none;padding:16px}
+  #msg h1{margin:0;font-size:clamp(44px,10vw,124px);letter-spacing:.18em;padding-left:.18em;color:#fff;
+    text-shadow:0 0 12px #fff,0 0 40px var(--glow),0 0 90px var(--glow2);font-weight:800}
+  #msg h2{margin:0;font-size:clamp(28px,6vw,64px);letter-spacing:.3em;padding-left:.3em;color:#fff;
+    text-shadow:0 0 12px #fff,0 0 40px var(--glow)}
+  #msg p{margin:14px 0 0;letter-spacing:.28em;font-size:clamp(11px,1.6vw,15px);text-transform:uppercase;
+    color:#cfe;text-shadow:0 0 10px var(--glow)}
+  #msg .blink{animation:bl 1.1s infinite;color:#fff;margin-top:34px}
+  @keyframes bl{50%{opacity:.25}}
+  #pause{position:fixed;inset:0;display:none;align-items:center;justify-content:center;font-size:48px;
+    letter-spacing:.4em;color:#fff;background:rgba(2,0,10,.55);text-shadow:0 0 30px var(--glow)}
+  #back{position:fixed;left:16px;bottom:14px;color:#9ef;text-decoration:none;font-size:12px;letter-spacing:.2em;
+    text-transform:uppercase;opacity:.7;z-index:5}
+  #back:hover{opacity:1}
+  .pop{position:fixed;font-weight:800;font-size:22px;pointer-events:none;transform:translate(-50%,-50%);
+    animation:pop 1s ease-out forwards;text-shadow:0 0 10px currentColor}
+  @keyframes pop{to{transform:translate(-50%,-220%) scale(1.5);opacity:0}}
+  .tc{position:fixed;bottom:46px;display:none;gap:10px;z-index:4;grid-auto-flow:column}
+  .tc.tl{left:14px;grid-template-columns:repeat(3,58px);grid-auto-flow:row}.tc.tr{right:14px}
+  .tc button{width:58px;height:58px;border-radius:14px;border:1px solid var(--glow);background:rgba(10,14,44,.55);
+    color:#fff;font-size:20px;font-family:inherit;touch-action:none;box-shadow:inset 0 0 16px -8px var(--glow)}
+  .tc button:active{background:rgba(60,200,255,.35)}
+  @media (pointer:coarse){.tc{display:grid}}
+  .menu{display:grid;grid-template-columns:repeat(2,minmax(0,210px));gap:12px;margin:30px 0 20px;pointer-events:auto}
+  .menu button,.hbtn{font:inherit;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:#fff;cursor:pointer;
+    padding:14px 10px;border-radius:10px;border:1px solid var(--glow);background:rgba(10,14,44,.85);box-shadow:inset 0 0 18px -8px var(--glow)}
+  .menu button:hover,.hbtn:hover{box-shadow:0 0 22px -2px var(--glow),inset 0 0 22px -6px var(--glow)}
+  .hbtn{position:fixed;right:16px;bottom:12px;padding:9px 14px;font-size:11px;z-index:5}
+  .hbtn.on{background:var(--glow2);color:#02000a}
+  :root{--glow:#3df;--glow2:#f4d}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div><span id="l0"></span><b id="v0"></b></div><div><span id="l1"></span><b id="v1"></b></div>
+  <div><span id="l2"></span><b id="v2"></b></div><div><span id="l3"></span><b id="v3"></b></div>
+</div>
+<div id="msg"></div>
+<div id="pause">PAUSED</div>
+<a id="back" href="index.html">&larr; games</a>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+'use strict';
+/* ================= shared engine: renderer, bloom, particles, audio, input ================= */
+const $=id=>document.getElementById(id);
+const setMsg=h=>{$('msg').innerHTML=h;};
+const setHud=a=>a.forEach((p,i)=>{$('l'+i).textContent=p[0];$('v'+i).textContent=p[1];});
+if(!window.THREE){setMsg('<h2>OFFLINE</h2><p>three.js could not be loaded — check your internet connection</p>');throw new Error('three.js missing');}
+const rnd=n=>Math.floor(Math.random()*n),rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x02000a);
+const camera=new THREE.PerspectiveCamera(50,1,0.1,600);
+const cam={pos:new THREE.Vector3(0,0,30),look:new THREE.Vector3(),shake:0};
+let onResize=null,onKeyDown=null,onTap=null,muted=false,paused=false;
+
+const dotTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'#fff');g.addColorStop(0.3,'rgba(255,255,255,.7)');
+  g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
+
+const stars=(()=>{const n=2200,p=new Float32Array(n*3),c=new Float32Array(n*3),col=new THREE.Color();
+  for(let i=0;i<n;i++){const r=140+Math.random()*140,a=Math.random()*Math.PI*2,e=Math.asin(Math.random()*2-1);
+    p[i*3]=Math.cos(a)*Math.cos(e)*r;p[i*3+1]=Math.sin(e)*r;p[i*3+2]=Math.sin(a)*Math.cos(e)*r;
+    col.setHSL(0.5+Math.random()*0.35,0.8,0.5+Math.random()*0.4);c[i*3]=col.r;c[i*3+1]=col.g;c[i*3+2]=col.b;}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  g.setAttribute('color',new THREE.BufferAttribute(c,3));
+  const s=new THREE.Points(g,new THREE.PointsMaterial({size:2.2,map:dotTex,vertexColors:true,transparent:true,
+    blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+  scene.add(s);return s;})();
+
+const PN=1400,pPos=new Float32Array(PN*3),pCol=new Float32Array(PN*3),pVel=new Float32Array(PN*3),
+  pBase=new Float32Array(PN*3),pLife=new Float32Array(PN),pMax=new Float32Array(PN);
+let pNext=0,pGrav=0;
+for(let i=0;i<PN;i++)pPos[i*3+1]=-999;
+const pGeo=new THREE.BufferGeometry();
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+const pPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:0.5,map:dotTex,vertexColors:true,transparent:true,
+  blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+pPoints.frustumCulled=false;scene.add(pPoints);
+const tmpC=new THREE.Color();
+function emit(x,y,z,color,n,speed,life){
+  tmpC.set(color);
+  for(let k=0;k<n;k++){
+    const i=pNext;pNext=(pNext+1)%PN;
+    const a=Math.random()*Math.PI*2,e=Math.asin(Math.random()*2-1),s=speed*(0.25+Math.random()*0.75);
+    pPos[i*3]=x;pPos[i*3+1]=y;pPos[i*3+2]=z;
+    pVel[i*3]=Math.cos(a)*Math.cos(e)*s;pVel[i*3+1]=Math.sin(e)*s;pVel[i*3+2]=Math.sin(a)*Math.cos(e)*s;
+    pBase[i*3]=tmpC.r;pBase[i*3+1]=tmpC.g;pBase[i*3+2]=tmpC.b;
+    pLife[i]=pMax[i]=life*(0.5+Math.random()*0.5);
+  }
+}
+function updateParticles(dt){
+  const damp=Math.pow(0.1,dt);
+  for(let i=0;i<PN;i++){
+    if(pLife[i]<=0)continue;
+    pLife[i]-=dt;const j=i*3;
+    if(pLife[i]<=0){pPos[j+1]=-999;pCol[j]=pCol[j+1]=pCol[j+2]=0;continue;}
+    pVel[j+1]-=pGrav*dt;
+    pPos[j]+=pVel[j]*dt;pPos[j+1]+=pVel[j+1]*dt;pPos[j+2]+=pVel[j+2]*dt;
+    pVel[j]*=damp;pVel[j+1]*=damp;pVel[j+2]*=damp;
+    const f=pLife[i]/pMax[i];
+    pCol[j]=pBase[j]*f;pCol[j+1]=pBase[j+1]*f;pCol[j+2]=pBase[j+2]*f;
+  }
+  pGeo.attributes.position.needsUpdate=true;pGeo.attributes.color.needsUpdate=true;
+}
+
+let composer=null,bloom=null;
+if(THREE.EffectComposer&&THREE.UnrealBloomPass&&THREE.RenderPass){
+  try{
+    composer=new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene,camera));
+    bloom=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.85,0.5,0.32);
+    composer.addPass(bloom);
+  }catch(e){composer=null;}
+}
+function resize(){
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h);if(composer)composer.setSize(w,h);
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  if(onResize)onResize(camera.aspect);
+}
+addEventListener('resize',resize);
+
+let actx=null;
+function audioInit(){if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(actx&&actx.state==='suspended')actx.resume();}
+function tone(f,dur,type,vol,slide){
+  if(!actx||muted)return;
+  const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime;
+  o.type=type||'sine';o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(slide,t+dur);
+  g.gain.setValueAtTime(vol||0.08,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+dur+0.02);
+}
+
+const keys={};
+const pointer={nx:0,ny:0,down:false,moved:false};
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();
+  audioInit();
+  if(k==='p'){paused=!paused;$('pause').style.display=paused?'flex':'none';return;}
+  if(k==='m'){muted=!muted;return;}
+  const first=!keys[k];keys[k]=true;
+  if(onKeyDown&&first&&!paused)onKeyDown(k,e);
+});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+function setPointer(e){pointer.nx=e.clientX/innerWidth*2-1;pointer.ny=-(e.clientY/innerHeight)*2+1;pointer.moved=true;}
+addEventListener('pointermove',setPointer);
+addEventListener('pointerdown',e=>{
+  if(e.target.closest&&e.target.closest('a,button'))return;
+  audioInit();setPointer(e);pointer.down=true;if(onTap&&!paused)onTap(e);
+});
+addEventListener('pointerup',()=>{pointer.down=false;});
+addEventListener('pointercancel',()=>{pointer.down=false;});
+const _ray=new THREE.Raycaster(),_v2=new THREE.Vector2(),_hit=new THREE.Vector3();
+function pointerOn(plane){_v2.set(pointer.nx,pointer.ny);_ray.setFromCamera(_v2,camera);return _ray.ray.intersectPlane(plane,_hit);}
+
+const _pv=new THREE.Vector3();
+function popup(text,x,y,z,color){
+  _pv.set(x,y,z).project(camera);
+  const el=document.createElement('div');el.className='pop';el.textContent=text;el.style.color=color||'#fff';
+  el.style.left=((_pv.x+1)/2*innerWidth)+'px';el.style.top=((1-_pv.y)/2*innerHeight)+'px';
+  document.body.appendChild(el);setTimeout(()=>el.remove(),1000);
+}
+function loadBest(key){try{return +localStorage.getItem(key)||0;}catch(e){return 0;}}
+function saveBest(key,v){try{localStorage.setItem(key,v);}catch(e){}}
+const hex=c=>'#'+c.toString(16).padStart(6,'0');
+
+// on-screen buttons for touch devices; each one drives a key
+function touchKeys(left,right){
+  const mk=(arr,cls)=>{if(!arr||!arr.length)return;const d=document.createElement('div');d.className='tc '+cls;
+    arr.forEach(([k,l,area])=>{const b=document.createElement('button');b.textContent=l;if(area)b.style.gridArea=area;
+      const dn=e=>{e.preventDefault();audioInit();if(!keys[k]){keys[k]=true;if(onKeyDown&&!paused)onKeyDown(k,e);}};
+      const up=e=>{e.preventDefault();keys[k]=false;};
+      b.addEventListener('pointerdown',dn);b.addEventListener('pointerup',up);
+      b.addEventListener('pointerleave',up);b.addEventListener('pointercancel',up);d.appendChild(b);});
+    document.body.appendChild(d);};
+  mk(left,'tl');mk(right,'tr');
+}
+const DPAD=[['arrowup','▲','1/2'],['arrowleft','◀','2/1'],['arrowdown','▼','2/2'],['arrowright','▶','2/3']];
+const LR=[['arrowleft','◀','1/1'],['arrowright','▶','1/3']];
+const coarse=matchMedia('(pointer:coarse)').matches;
+
+function run(update){
+  let last=performance.now(),t=0;
+  function frame(now){
+    requestAnimationFrame(frame);
+    const dt=Math.min(0.05,(now-last)/1000);last=now;
+    if(!paused){t+=dt;update(dt,t);updateParticles(dt);stars.rotation.y=t*0.006;}
+    camera.position.copy(cam.pos);
+    if(cam.shake>0){cam.shake=Math.max(0,cam.shake-dt);
+      camera.position.x+=(Math.random()-0.5)*cam.shake;camera.position.y+=(Math.random()-0.5)*cam.shake;}
+    camera.lookAt(cam.look);
+    if(composer)composer.render();else renderer.render(scene,camera);
+  }
+  resize();requestAnimationFrame(frame);
+}
+
+/* ================= MILL — nine men's morris: line up three to take a rival piece ================= */
+/*LOGIC*/
+// 24 points: ring 0 (outer) .. 2 (inner), 8 points each going clockwise from the top-left corner
+const ADJ=[],MILLS=[],MOF=Array.from({length:24},()=>[]);
+for(let k=0;k<3;k++)for(let j=0;j<8;j++){const a=[k*8+(j+1)%8,k*8+(j+7)%8];if(j&1){if(k>0)a.push((k-1)*8+j);if(k<2)a.push((k+1)*8+j);}ADJ[k*8+j]=a;}
+for(let k=0;k<3;k++)for(let j=0;j<8;j+=2)MILLS.push([k*8+j,k*8+j+1,k*8+(j+2)%8]);
+for(let j=1;j<8;j+=2)MILLS.push([j,8+j,16+j]);
+MILLS.forEach(m=>m.forEach(s=>MOF[s].push(m)));
+const newMill=()=>({b:new Int8Array(24),hand:[9,9],turn:1,quiet:0});
+const inMill=(b,s,p)=>MOF[s].some(m=>b[m[0]]===p&&b[m[1]]===p&&b[m[2]]===p);
+const cnt=(b,p)=>{let n=0;for(let s=0;s<24;s++)if(b[s]===p)n++;return n;};
+function removable(b,p){const free=[],all=[];for(let s=0;s<24;s++)if(b[s]===-p){all.push(s);if(!inMill(b,s,-p))free.push(s);}return free.length?free:all;}
+function baseMoves(g){const b=g.b,p=g.turn,me=p===1?0:1,out=[];
+  if(g.hand[me]>0){for(let t=0;t<24;t++)if(!b[t])out.push({f:-1,t});return out;}
+  const fly=cnt(b,p)===3;
+  for(let f=0;f<24;f++){if(b[f]!==p)continue;
+    if(fly){for(let t=0;t<24;t++)if(!b[t])out.push({f,t});}else for(const t of ADJ[f])if(!b[t])out.push({f,t});}
+  return out;}
+function base(g,m){const n={b:g.b.slice(),hand:g.hand.slice(),turn:g.turn,quiet:g.quiet+1};if(m.f<0)n.hand[g.turn===1?0:1]--;else n.b[m.f]=0;n.b[m.t]=g.turn;return n;}
+function fin(n,r){if(r>=0){n.b[r]=0;n.quiet=0;}n.turn=-n.turn;return n;}
+function gen(g){const out=[];for(const m of baseMoves(g)){const n=base(g,m);
+    if(inMill(n.b,m.t,g.turn)){for(const r of removable(n.b,g.turn))out.push({f:m.f,t:m.t,r});}else out.push({f:m.f,t:m.t,r:-1});}
+  return out;}
+const make=(g,m)=>fin(base(g,m),m.r);
+// the side to move has lost when it is down to two pieces or cannot move
+function lost(g){const me=g.turn===1?0:1;if(!g.hand[me]&&cnt(g.b,g.turn)<3)return true;return baseMoves(g).length===0;}
+function evalM(g,p){const b=g.b;let v=0;
+  v+=(cnt(b,p)+g.hand[p===1?0:1]-cnt(b,-p)-g.hand[p===1?1:0])*100;
+  for(const m of MILLS){let a=0,o=0;for(const s of m){if(b[s]===p)a++;else if(b[s]===-p)o++;}
+    if(a===3)v+=14;else if(a===2&&!o)v+=9;if(o===3)v-=14;else if(o===2&&!a)v-=9;}
+  if(!g.hand[0]&&!g.hand[1]){let mob=0;for(let s=0;s<24;s++)if(b[s])for(const t of ADJ[s])if(!b[t])mob+=b[s]===p?1:-1;v+=mob*4;}
+  return v;}
+function searchM(g,depth,alpha,beta,ply){
+  if(lost(g))return -100000+ply;
+  if(depth<=0||g.quiet>=60)return g.quiet>=60?0:evalM(g,g.turn);
+  const ms=gen(g);ms.sort((x,y)=>y.r-x.r);let best=-1e9;
+  for(const m of ms){const v=-searchM(make(g,m),depth-1,-beta,-alpha,ply+1);if(v>best)best=v;if(v>alpha)alpha=v;if(alpha>=beta)break;}
+  return best;}
+function aiPick(g,level){const ms=gen(g);if(!ms.length)return null;
+  if(level===0&&Math.random()<0.3)return ms[Math.floor(Math.random()*ms.length)];
+  const fly=cnt(g.b,1)===3||cnt(g.b,-1)===3,depth=[1,3,fly?4:5][level];let best=-1e9,pick=[];
+  for(const m of ms){const v=-searchM(make(g,m),depth-1,-1e9,1e9,1);if(v>best){best=v;pick=[m];}else if(v===best)pick.push(m);}
+  return pick[Math.floor(Math.random()*pick.length)];}
+/*ENDLOGIC*/
+
+const KEY='mill_wins';let wins=loadBest(KEY);
+const COL={1:0x35d9ff,[-1]:0xff4fd8},NAME={1:'CYAN',[-1]:'PINK'};
+let state='title',mode='cpu',level=1,g=newMill(),sel=-1,pend=null,aiT=0,busy=0,cursorI=0,keyNav=false;
+const OFF=[[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0]],SC=1.2;
+const PX=s=>OFF[s&7][0]*(3-(s>>3))*SC,PZ=s=>OFF[s&7][1]*(3-(s>>3))*SC;
+
+scene.add(new THREE.AmbientLight(0x8899cc,0.55));
+const dl=new THREE.DirectionalLight(0xffffff,0.6);dl.position.set(3,10,6);scene.add(dl);
+onResize=a=>{const k=Math.max(1,1.16/a);cam.pos.set(0,11*k,8*k);};cam.look.set(0,0,0.4);
+const gh=new THREE.GridHelper(120,60,0x1c2c70,0x0e1640);gh.position.y=-4;scene.add(gh);
+const base0=new THREE.Mesh(new THREE.BoxGeometry(8.6,0.1,8.6),new THREE.MeshStandardMaterial({color:0x070b28,emissive:0x0a1040,emissiveIntensity:0.3,roughness:0.6,metalness:0.3}));base0.position.y=-0.06;scene.add(base0);
+const frameMat=new THREE.MeshBasicMaterial({color:0x6a7cff}),frameCol=new THREE.Color(0x6a7cff);
+[[8.8,0.1,0,4.35],[8.8,0.1,0,-4.35],[0.1,8.8,4.35,0],[0.1,8.8,-4.35,0]].forEach(f=>{const m=new THREE.Mesh(new THREE.BoxGeometry(f[0],0.1,f[1]),frameMat);m.position.set(f[2],-0.04,f[3]);scene.add(m);});
+{const v=[],ln=(a,b)=>v.push(PX(a),0.006,PZ(a),PX(b),0.006,PZ(b));
+  for(let k=0;k<3;k++)for(let j=0;j<8;j++)ln(k*8+j,k*8+(j+1)%8);for(let j=1;j<8;j+=2){ln(j,8+j);ln(8+j,16+j);}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(v),3));scene.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x4a62e0})));
+  const pg=new THREE.CircleGeometry(0.16,16),pmat=new THREE.MeshBasicMaterial({color:0x33469c});
+  for(let s=0;s<24;s++){const m=new THREE.Mesh(pg,pmat);m.rotation.x=-Math.PI/2;m.position.set(PX(s),0.008,PZ(s));scene.add(m);}}
+const pcGeo=new THREE.CylinderGeometry(0.38,0.42,0.2,28),pcMat={};
+for(const p of [1,-1])pcMat[p]=new THREE.MeshStandardMaterial({color:new THREE.Color(COL[p]).multiplyScalar(0.5),emissive:COL[p],emissiveIntensity:0.05,roughness:0.5});
+let at=new Array(24).fill(null),handM=[[],[]],all=[];
+function build(){all.forEach(m=>scene.remove(m));all=[];at.fill(null);handM=[[],[]];
+  for(const me of [0,1])for(let i=0;i<9;i++){const m=new THREE.Mesh(pcGeo,pcMat[me?-1:1]);m.userData.t=new THREE.Vector3((i-4)*0.72*(me?-1:1),0.1,me?-5.1:5.1);m.position.copy(m.userData.t);
+    scene.add(m);all.push(m);handM[me].unshift(m);}}
+function showBase(m,p){const mesh=m.f<0?handM[p===1?0:1].pop():at[m.f];if(m.f>=0)at[m.f]=null;at[m.t]=mesh;mesh.userData.t.set(PX(m.t),0.1,PZ(m.t));tone(420,0.07,'triangle',0.07);}
+function showRemove(r,p){const mesh=at[r];at[r]=null;scene.remove(mesh);all.splice(all.indexOf(mesh),1);emit(PX(r),0.3,PZ(r),COL[-p],18,3.5,0.6);cam.shake=0.15;tone(200,0.2,'sawtooth',0.07,90);}
+const ringGeo=new THREE.RingGeometry(0.2,0.3,24);
+const dots=Array.from({length:24},()=>{const m=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0x8dff5a,side:THREE.DoubleSide}));m.rotation.x=-Math.PI/2;m.visible=false;scene.add(m);return m;});
+const selRing=new THREE.Mesh(new THREE.RingGeometry(0.46,0.54,28),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}));selRing.rotation.x=-Math.PI/2;selRing.visible=false;scene.add(selRing);
+const curRing=new THREE.Mesh(new THREE.RingGeometry(0.58,0.64,28),new THREE.MeshBasicMaterial({color:0xffd24a,side:THREE.DoubleSide}));curRing.rotation.x=-Math.PI/2;curRing.visible=false;scene.add(curRing);
+const humanTurn=()=>state==='play'&&busy<=0&&(mode==='2p'||g.turn===1);
+const phaseName=()=>pend?'TAKE':g.hand[g.turn===1?0:1]?'PLACE':cnt(g.b,g.turn)===3?'FLY':'MOVE';
+// squares the player may tap right now
+function choices(){if(pend)return removable(g.b,g.turn);const ms=baseMoves(g);
+  if(g.hand[g.turn===1?0:1])return ms.map(m=>m.t);
+  return sel<0?[...new Set(ms.map(m=>m.f))]:ms.filter(m=>m.f===sel).map(m=>m.t);}
+function marks(){dots.forEach(d=>d.visible=false);selRing.visible=curRing.visible=false;if(!humanTurn())return;
+  const ch=choices(),own=!pend&&!g.hand[g.turn===1?0:1]&&sel<0;
+  ch.forEach((s,i)=>{const d=dots[i];d.visible=!own;d.material.color.set(pend?0xff4455:0x8dff5a);d.position.set(PX(s),g.b[s]?0.22:0.02,PZ(s));});
+  if(sel>=0){selRing.visible=true;selRing.position.set(PX(sel),0.22,PZ(sel));}
+  if(keyNav&&ch.length){cursorI=(cursorI%ch.length+ch.length)%ch.length;curRing.visible=true;curRing.position.set(PX(ch[cursorI]),0.23,PZ(ch[cursorI]));}}
+function hud(){const t=state!=='play'?'–':mode==='cpu'?(g.turn===1?'YOU':'CPU'):NAME[g.turn];
+  setHud([['Cyan',cnt(g.b,1)+g.hand[0]],['Turn',t],['Pink',cnt(g.b,-1)+g.hand[1]],['Phase',state==='play'?phaseName():'–']]);}
+const MENU='<div class="menu"><button data-m="0">vs cpu · easy</button><button data-m="1">vs cpu · medium</button><button data-m="2">vs cpu · hard</button><button data-m="3">2 players</button></div>';
+function overlay(html){setMsg(html);$('msg').style.background=html?'rgba(2,0,10,.62)':'none';}
+function showTitle(){state='title';sel=-1;pend=null;marks();hud();overlay('<h1>MILL</h1><p>nine men\'s morris · three in a line takes a rival piece</p>'+MENU+'<p>place nine pieces each, then slide along the lines · with three left you may fly anywhere</p><p>tap a point or a piece · or ◀ ▶ + space · reduce your rival to two or block every move'+(wins?' · wins '+wins:'')+'</p>');}
+function newGame(m){if(m===3)mode='2p';else{mode='cpu';level=m;}
+  g=newMill();build();sel=-1;pend=null;busy=0.3;aiT=0.6;state='play';overlay('');hud();marks();tone(440,0.12,'square',0.06,880);}
+function finish(w,why){state='over';marks();
+  const title=!w?'DRAW':mode==='2p'?NAME[w]+' WINS':w===1?'YOU WIN':'CPU WINS';if(mode==='cpu'&&w===1){wins++;saveBest(KEY,wins);}hud();
+  (w===1||mode==='2p'&&w?[523,659,784,1047]:[392,330,262,196]).forEach((f,i)=>setTimeout(()=>tone(f,0.2,'square',0.07),i*130));
+  overlay('<h2>'+title+'</h2><p>'+why+'</p>'+MENU);}
+function endTurn(r){const p=g.turn;if(r>=0)showRemove(r,p);g=fin(g,r);pend=null;sel=-1;cursorI=0;busy=0.4;aiT=0.5;hud();marks();
+  const end=lost(g)?[-g.turn,cnt(g.b,g.turn)<3&&!g.hand[g.turn===1?0:1]?'down to two pieces':'no move left']:g.quiet>=60?[0,'sixty moves without a capture']:null;
+  if(end){busy=9;setTimeout(()=>{if(state==='play')finish(end[0],end[1]);},800);}}
+function doBase(m){const p=g.turn;showBase(m,p);g=base(g,m);sel=-1;cursorI=0;
+  if(inMill(g.b,m.t,p)){pend=m;[660,880].forEach((f,i)=>setTimeout(()=>tone(f,0.1,'square',0.06),i*90));return true;}
+  endTurn(-1);return false;}
+function pick(s){if(!humanTurn())return;
+  if(pend){if(removable(g.b,g.turn).includes(s))endTurn(s);else tone(160,0.08,'square',0.04);return;}
+  const ms=baseMoves(g);
+  if(g.hand[g.turn===1?0:1]){const m=ms.find(q=>q.t===s);if(m){doBase(m);hud();marks();}else tone(160,0.08,'square',0.04);return;}
+  const m=sel>=0&&ms.find(q=>q.f===sel&&q.t===s);
+  if(m){doBase(m);hud();marks();return;}
+  sel=ms.some(q=>q.f===s)?s:-1;cursorI=0;if(sel<0)tone(160,0.08,'square',0.04);marks();}
+const plane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+onTap=()=>{if(!humanTurn())return;const h=pointerOn(plane);if(!h)return;keyNav=false;
+  let best=-1,bd=0.6;for(let s=0;s<24;s++){const d=Math.hypot(h.x-PX(s),h.z-PZ(s));if(d<bd){bd=d;best=s;}}
+  if(best>=0)pick(best);};
+onKeyDown=k=>{
+  if(k==='escape'){showTitle();return;}
+  if(state!=='play'){if(k>='1'&&k<='4')newGame(+k-1);else if(k===' '||k==='enter')newGame(mode==='2p'?3:level);return;}
+  if(!humanTurn())return;keyNav=true;const ch=choices();
+  if(k==='arrowleft'||k==='a')cursorI--;else if(k==='arrowright'||k==='d')cursorI++;
+  else if(k==='arrowdown'||k==='s'||k==='arrowup'||k==='w'){sel=-1;cursorI=0;}
+  else if((k===' '||k==='enter')&&ch.length){cursorI=(cursorI%ch.length+ch.length)%ch.length;pick(ch[cursorI]);}
+  marks();};
+$('msg').addEventListener('click',e=>{const q=e.target.closest('button[data-m]');if(q){audioInit();newGame(+q.dataset.m);}});
+const mb=document.createElement('button');mb.className='hbtn';mb.textContent='menu';document.body.appendChild(mb);mb.addEventListener('click',()=>showTitle());
+const tc=new THREE.Color();let aiRem=-1;
+function update(dt,t){
+  gh.material.color.setHSL((t*0.02)%1,0.6,0.5);
+  if(busy>0&&busy<5){busy-=dt;if(busy<=0)marks();}
+  if(state==='play'&&busy<=0&&mode==='cpu'&&g.turn===-1){aiT-=dt;
+    if(aiT<=0){if(pend){endTurn(aiRem);}else{const m=aiPick(g,level);if(m){aiRem=m.r;if(doBase(m)){aiT=0.6;hud();}}}}}
+  for(const m of all){const p=m.position,q=m.userData.t,dx=q.x-p.x,dz=q.z-p.z,d=Math.hypot(dx,dz),k=Math.min(1,dt*8);
+    p.x+=dx*k;p.z+=dz*k;p.y+=(q.y+Math.min(1,d*0.35)-p.y)*Math.min(1,dt*14);}
+  dots.forEach(d=>d.scale.setScalar(1+Math.sin(t*5)*0.15));
+  tc.set(state==='play'?COL[g.turn]:0x6a7cff);frameCol.lerp(tc,Math.min(1,dt*5));frameMat.color.copy(frameCol);
+}
+build();showTitle();
+run(update);
+
+</script>
+</body>
+</html>
