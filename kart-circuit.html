@@ -270,10 +270,11 @@ function rank(k){return 1+karts.filter(o=>o!==k&&(o.done?(k.done?o.done<k.done:t
 function hud(){const me=karts[0];setHud([['Lap',me?Math.min(LAPS,me.lap+1)+'/'+LAPS:'–'],['Place',me?rank(me)+'/4':'–'],['Time',time.toFixed(1)],['Best',best?(best/10).toFixed(1):'–']]);}
 const MENU=menuHtml(['easy','medium','hard','new track']);
 function newGame(m){if(m===3){genTrack();buildTrack();place();return;}level=m;place();go=3.2;time=0;finished=0;state='play';overlay('');hud();}
-function showTitle(){state='title';hud();overlay('<h1 style="font-size:clamp(34px,7.5vw,96px)">KART CIRCUIT</h1><p>three laps · four karts · first across the line</p>'+MENU+'<p>the kart accelerates by itself · ◀ ▶ steer · ▼ or space brakes for the tight corners</p><p>leave the lit edges and you crawl · on a touch screen use the on-screen arrows</p>');}
+function showTitle(){state='title';hud();overlay('<h1 style="font-size:clamp(34px,7.5vw,96px)">KART CIRCUIT</h1><p>three laps · four karts · first across the line</p>'+MENU+'<p>the kart accelerates by itself · ◀ ▶ steer · ▼ or space brakes for the tight corners</p><p>leave the lit edges and you crawl · stray too far and you are put back on the track · on a touch screen use the on-screen arrows</p>');}
 function nearest(k){let bi=k.idx,bd=1e9;for(let o=-6;o<=18;o++){const j=(k.idx+o+N)%N,d=(pts[j].x-k.x)**2+(pts[j].z-k.z)**2;if(d<bd){bd=d;bi=j;}}
   if(bi<k.idx-N/2){if(k.half){k.lap++;k.half=false;if(!k.cpu)tone(880,0.2,'square',0.06,1320);}}if(bi>N*0.45&&bi<N*0.6)k.half=true;k.idx=bi;return Math.sqrt(bd);}
-function drive(k,steer,brake,dt){const off=nearest(k)>TW,vm=off?5.5:k.vmax;if(brake)k.v=Math.max(0,k.v-16*dt);else if(k.v<vm)k.v=Math.min(vm,k.v+7.5*dt);else k.v=Math.max(vm,k.v-12*dt);
+function drive(k,steer,brake,dt){const dist=nearest(k),off=dist>TW,vm=off?5.5:k.vmax;
+  if(dist>9){const q=pts[k.idx],tg=tan[k.idx];k.x=q.x;k.z=q.z;k.h=Math.atan2(tg.x,tg.z);k.v=0;if(!k.cpu){popup('BACK ON TRACK',k.x,2,k.z,'#ffd24a');tone(300,0.2,'triangle',0.06,600);}}if(brake)k.v=Math.max(0,k.v-16*dt);else if(k.v<vm)k.v=Math.min(vm,k.v+7.5*dt);else k.v=Math.max(vm,k.v-12*dt);
   k.h+=steer*2.3*dt*Math.min(1,k.v/5);k.x+=Math.sin(k.h)*k.v*dt;k.z+=Math.cos(k.h)*k.v*dt;k.steer=steer;}
 onTap=()=>{};
 onKeyDown=k=>{if(k==='escape'){showTitle();return;}if(state!=='play'){if(k>='1'&&k<='4')newGame(+k-1);else if(k===' '||k==='enter')newGame(level);}};
