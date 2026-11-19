@@ -281,7 +281,7 @@ function layout(snap){const seen={};
     o.t.set(WX(c)+(n?Math.cos(n*2.1)*0.16:0),0,WZ(c)+(n?Math.sin(n*2.1)*0.16:0));if(snap)o.mesh.position.copy(o.t);}}
 // die
 const PIPS=[[],[3],[0,6],[0,3,6],[0,1,5,6],[0,1,3,5,6],[0,1,2,4,5,6]],PP=[[-1,-1],[1,-1],[-1,0],[0,0],[1,0],[-1,1],[1,1]];
-const dieG=new THREE.Group(),dieMat=new THREE.MeshStandardMaterial({color:0x101850,emissive:0x2030a0,emissiveIntensity:0.3,roughness:0.4});
+const dieG=new THREE.Group(),dieMat=new THREE.MeshStandardMaterial({color:0x101850,emissive:0x2030a0,emissiveIntensity:0.13,roughness:0.4});
 dieG.add(new THREE.Mesh(new THREE.BoxGeometry(0.7,0.7,0.7),dieMat));
 const pipM=PP.map(([x,z])=>{const m=new THREE.Mesh(new THREE.CircleGeometry(0.075,12),new THREE.MeshBasicMaterial({color:0xffffff}));m.rotation.x=-Math.PI/2;m.position.set(x*0.2,0.355,z*0.2);dieG.add(m);return m;});
 dieG.position.set(0,0.5,0);scene.add(dieG);
