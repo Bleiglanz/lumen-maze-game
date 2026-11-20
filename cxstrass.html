@@ -275,7 +275,7 @@ function mkStaff(i){const m=person(SC[i%SC.length]),stars=new THREE.Group();for(
   const it=i%3===0,bed=it?BEDS[Math.floor(i/3)%BEDS.length]:0;
   return {f:i%3,x:it?bed:rand(-HX+1,HX-1),dir:Math.random()<0.5?-1:1,lad:null,ly:0,stun:0,safe:0,think:rand(0.5,2),mesh:m,stars,ph:Math.random()*6,it,bed,sleep:it?rand(5,13):0,awake:0,zt:rand(0,2)};}
 function hud(){setHud([['Hits',score],['Shift ends',Math.ceil(time)+'s'],['Staff',staff.length],['Best',best]]);}
-function newGame(){staff.forEach(s=>scene.remove(s.mesh));staff=[];for(let i=0;i<7;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};score=0;time=SHIFT;state='play';overlay('');hud();tone(110,0.4,'sawtooth',0.07,55);if(musicOk){music.currentTime=0;music.play().catch(()=>{});}}
+function newGame(){staff.forEach(s=>scene.remove(s.mesh));staff=[];for(let i=0;i<7;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};score=0;time=SHIFT;beat=0;beatT=0.35;state='play';overlay('');hud();tone(110,0.4,'sawtooth',0.07,55);if(musicOk){music.currentTime=0;music.play().catch(()=>{});}}
 const ladAt=(f,x,up)=>LAD.find(l=>l[0]===(up?f:f-1)&&Math.abs(l[1]-x)<0.4);
 function swing(){if(boss.cool>0||boss.lad)return;boss.swing=0.28;boss.cool=0.42;tone(240,0.07,'square',0.05,120);let hit=false;
   for(const s of staff){if(s.stun>0||s.safe>0)continue;const sy=s.lad?s.ly:FY[s.f],by=FY[boss.f],dx=(s.x-boss.x)*boss.face;if(Math.abs(sy-by)<0.9&&dx>-0.35&&dx<1.35){hit=true;s.stun=2.6;s.lad=null;score++;if(s.it){s.sleep=0;s.awake=rand(7,11);}
@@ -291,11 +291,18 @@ const music=new Audio();let musicOk=false,srcI=0;const SRC=['cxstrass.mp3','cxst
 music.loop=true;music.volume=0.6;music.preload='auto';music.addEventListener('canplaythrough',()=>{musicOk=true;});
 music.addEventListener('error',()=>{if(++srcI<SRC.length)music.src=SRC[srcI];});music.src=SRC[0];
 setInterval(()=>{if(!musicOk)return;music.muted=muted;if(state!=='play'||paused){if(!music.paused)music.pause();}else if(music.paused)music.play().catch(()=>{});},150);
-// an original stomping march in a minor key (two bars, looped)
-const BASS=[73.4,0,73.4,0,73.4,0,87.3,73.4,69.3,0,69.3,0,65.4,0,82.4,0],LEAD=[294,0,0,294,349,0,330,0,277,0,0,277,262,0,220,247];
+// soundtrack: Wagner's "Ride of the Valkyries" (public domain), synthesized. Notes are [midi pitch, length in sixteenths], 9/8 time
+const TUNE=[[59,3],[54,1],[59,2],[62,6],[59,6],[62,3],[59,1],[62,2],[66,6],[62,6],[66,3],[62,1],[66,2],[69,6],[57,6],[62,3],[57,1],[62,2],[66,12],
+  [62,3],[59,1],[62,2],[66,6],[62,6],[66,3],[62,1],[66,2],[69,6],[66,6],[69,3],[66,1],[69,2],[73,6],[61,6],[66,3],[61,1],[66,2],[70,12]];
+const ROOT=[47,47,47,47,50,50,50,50,50,50,50,50,50,50,50,50,54,54,54,54,54,54,54,54],STEP=0.1,hz=m=>440*Math.pow(2,(m-69)/12),LEAD=[];
+{let st=0;for(const [m,len] of TUNE){LEAD[st]=[m,len];st+=len;}}
+const STEPS=TUNE.reduce((a,n)=>a+n[1],0);
 function update(dt,t){
   if(state==='play'){time-=dt;if(Math.ceil(time)!==Math.ceil(time+dt))hud();
-    beatT-=dt;if(beatT<=0&&!musicOk){beatT=0.19;const i=beat++%16;if(BASS[i])tone(BASS[i],0.17,'sawtooth',0.045);if(LEAD[i])tone(LEAD[i],0.15,'square',0.022);if(i%4===0)tone(55,0.08,'triangle',0.07,40);}
+    beatT-=dt;if(beatT<=0&&!musicOk){beatT=Math.max(0.02,beatT+STEP);const i=beat++%STEPS,n=LEAD[i],root=ROOT[Math.floor(i/6)],g=i%6;
+      if(n){tone(hz(n[0]),n[1]*STEP*0.92,'sawtooth',0.05);tone(hz(n[0]-12),n[1]*STEP*0.92,'square',0.02);}   // brass theme, doubled an octave down
+      if(g===0||g===3||g===4)tone(hz(root-12),[0.26,0,0,0.08,0.17][g],'triangle',0.07);                        // galloping bass
+      tone(hz(root+24+(i%2?3:0)+(root===54?i%2:0)),0.07,'triangle',0.012);}                                    // string shimmer
     const b=boss,sx=(keys['arrowright']||keys['d']?1:0)-(keys['arrowleft']||keys['a']?1:0),sy=(keys['arrowup']||keys['w']?1:0)-(keys['arrowdown']||keys['s']?1:0);b.cool-=dt;b.swing=Math.max(0,b.swing-dt);
     if(b.lad){b.ly+=sy*3.4*dt;const lo=FY[b.lad[0]],hi=FY[b.lad[0]+1];if(b.ly>=hi){b.f=b.lad[0]+1;b.lad=null;}else if(b.ly<=lo){b.f=b.lad[0];b.lad=null;}b.ph+=Math.abs(sy)*dt*10;}
     else{if(sx){b.face=sx;b.x=clamp(b.x+sx*4.3*dt,-HX,HX);b.ph+=dt*11;}
