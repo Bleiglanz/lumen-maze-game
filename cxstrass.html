@@ -247,9 +247,9 @@ const _bar=document.createElement('div');_bar.style.cssText='position:fixed;left
 _bar.addEventListener('click',e=>{const q=e.target.closest('button');if(q){audioInit();if(onKeyDown)onKeyDown(q.dataset.k);}});
 let _barKey='';function setBar(bs){const k=JSON.stringify(bs);if(k===_barKey)return;_barKey=k;_bar.innerHTML=bs.map(b=>'<button class="hbtn" data-k="'+b[1]+'" style="position:static;margin:3px 4px">'+b[0]+'</button>').join('');}
 const KEY='cxstrass_best';let best=loadBest(KEY);
-const BEDS=[-5.9,-2.6,1.2,5.3],FY=[-3.6,-0.4,2.8],FN=['IT','OFFICE','HR'],FC=[0x35d9ff,0xffd24a,0xff4fd8],HX=7.4,LAD=[[0,-4.5],[0,3.2],[1,-1.2],[1,5.4]],SHIFT=90,
+const BEDS=[-5.9,-2.6,1.2,5.3],FY=[-3.6,-0.4,2.8],FN=['IT','OFFICE','HR'],FC=[0x35d9ff,0xffd24a,0xff4fd8],HX=7.4,LAD=[[0,-4.5],[0,3.2],[1,-1.2],[1,5.4]],SHIFT=120,CREW=7,
   OUCH=['OW!','I QUIT','NOT AGAIN','PER MY LAST EMAIL…','HR!!','MY HEAD','IS THIS A REVIEW?','CC: LEGAL','OUCH','I HAD A MEETING'];
-let state='title',boss=null,staff=[],score=0,time=SHIFT,beat=0,beatT=0;
+let state='title',boss=null,staff=[],score=0,time=SHIFT,beat=0,beatT=0,level=1,nextT=0;
 gh.visible=false;let asp=1.5,zoomIn=null;onResize=a=>{asp=a;if(zoomIn===null)zoomIn=a<1;};
 // ---- pixel art: everything is drawn on tiny canvases and scaled up with hard edges, one sprite pixel = P world units ----
 const GLYPH={I:['111','010','010','010','111'],T:['111','010','010','010','010'],O:['111','101','101','101','111'],F:['111','100','110','100','100'],C:['111','100','100','100','111'],E:['111','100','110','100','111'],H:['101','101','111','101','101'],R:['110','101','110','101','101']};
@@ -286,19 +286,22 @@ function ptex(shirt,frame,isBoss){const key=shirt+frame+(isBoss?'b':'');return t
 function person(shirt,isBoss){const g=new THREE.Group(),k=isBoss?1.2:1,m=plane(ptex(shirt,'walk0',isBoss),16*P*k,24*P*k,g);scene.add(g);g.userData={set:f=>{m.material.map=ptex(shirt,f,isBoss);}};return g;}
 const bm=person('boss',true),ham=plane(PX(10,18,r=>{r(4,6,2,12,'#a07030');r(0,0,10,6,'#b8b8c8');r(0,0,10,1,'#f0f0f8');r(0,5,10,1,'#7a7a8a');}),10*P*1.2,18*P*1.2,bm);ham.position.set(0.52,0.9,0.02);
 const SC=['#35d9ff','#8dff5a','#ff8a3a','#b08cff','#ff4fd8','#2ee6a0','#ffd24a'];
-const starG=new THREE.PlaneGeometry(2*P,2*P),starM=new THREE.MeshBasicMaterial({color:0xffd24a});
+const starG=new THREE.PlaneGeometry(2*P,2*P),starM=new THREE.MeshBasicMaterial({color:0xffd24a}),bumpM=new THREE.MeshBasicMaterial({color:0xff3344});
 function mkStaff(i){const m=person(SC[i%SC.length]),stars=new THREE.Group();for(let k=0;k<3;k++)stars.add(new THREE.Mesh(starG,starM));stars.position.y=1.95;m.add(stars);
+  const bumps=[0,1].map(k=>{const q=new THREE.Mesh(starG,bumpM);q.position.set(-0.12+k*0.24,1.8,0.02);q.visible=false;m.add(q);return q;});   // one red lump per bonk taken
   const it=i%3===0,bed=it?BEDS[Math.floor(i/3)%BEDS.length]:0;
-  return {f:i%3,x:it?bed:rand(-HX+1,HX-1),dir:Math.random()<0.5?-1:1,lad:null,ly:0,stun:0,safe:0,think:rand(0.5,2),mesh:m,stars,ph:Math.random()*6,it,bed,sleep:it?rand(5,13):0,awake:0,zt:rand(0,2)};}
-function hud(){setHud([['Hits',score],['Shift ends',Math.ceil(time)+'s'],['Staff',staff.length],['Best',best]]);}
-function newGame(){staff.forEach(s=>scene.remove(s.mesh));staff=[];for(let i=0;i<7;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};score=0;time=SHIFT;beat=0;beatT=0.35;state='play';overlay('');hud();tone(110,0.4,'sawtooth',0.07,55);if(musicOk){music.currentTime=0;music.play().catch(()=>{});}}
+  return {f:i%3,x:it?bed:rand(-HX+1,HX-1),dir:Math.random()<0.5?-1:1,lad:null,ly:0,stun:0,safe:0,think:rand(0.5,2),mesh:m,stars,ph:Math.random()*6,it,bed,sleep:it?rand(5,13):0,awake:0,zt:rand(0,2),hits:0,fly:null,bumps};}
+function hud(){setHud([['Hits',score],['Shift ends',Math.ceil(time)+'s'],['Staff left',staff.filter(q=>!q.fly).length],['Level',level]]);}
+function startLevel(){staff.forEach(s=>scene.remove(s.mesh));staff=[];for(let i=0;i<CREW;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};time=SHIFT;nextT=0;hud();}
+function newGame(){level=1;score=0;startLevel();beat=0;beatT=0.35;state='play';overlay('');hud();tone(110,0.4,'sawtooth',0.07,55);if(musicOk){music.currentTime=0;music.play().catch(()=>{});}}
 const ladAt=(f,x,up)=>LAD.find(l=>l[0]===(up?f:f-1)&&Math.abs(l[1]-x)<0.4);
 function swing(){if(boss.cool>0||boss.lad)return;boss.swing=0.28;boss.cool=0.42;tone(240,0.07,'square',0.05,120);let hit=false;
-  for(const s of staff){if(s.stun>0||s.safe>0)continue;const sy=s.lad?s.ly:FY[s.f],by=FY[boss.f],dx=(s.x-boss.x)*boss.face;if(Math.abs(sy-by)<0.9&&dx>-0.35&&dx<1.35){hit=true;s.stun=2.6;s.lad=null;score++;if(s.it){s.sleep=0;s.awake=rand(7,11);}
+  for(const s of staff){if(s.stun>0||s.safe>0||s.fly)continue;const sy=s.lad?s.ly:FY[s.f],by=FY[boss.f],dx=(s.x-boss.x)*boss.face;if(Math.abs(sy-by)<0.9&&dx>-0.35&&dx<1.35){hit=true;s.stun=2.6;s.lad=null;score++;s.hits++;if(s.it){s.sleep=0;s.awake=rand(7,11);}
+      if(s.hits>=3){s.stun=0;s.fly={x:s.x,y:sy,vx:boss.face*rand(3,6),vy:rand(7,9),rot:0};popup('I\'M OUT!',s.x,sy+2.6,0,'#ff4d7a');tone(300,0.5,'sawtooth',0.07,1600);emit(s.x,sy+1,0.3,0xff4d7a,24,5,0.8);cam.shake=0.25;continue;}
       popup(OUCH[rnd(OUCH.length)],s.x,sy+2,0,'#ffd24a');emit(s.x,sy+1.5,0.3,0xffd24a,14,3.5,0.6);tone(880,0.05,'square',0.07);setTimeout(()=>tone(140,0.18,'triangle',0.08,70),50);cam.shake=0.14;
-      if(score%8===0&&staff.length<12){const n=mkStaff(staff.length);n.safe=1.5;staff.push(n);popup('NEW HIRE',n.x,FY[n.f]+2.2,0,'#8dff5a');}}}
+}}
   if(hit)hud();}
-function showTitle(){state='title';hud();overlay('<h1>CXSTRASS</h1><p>the boss is doing his rounds · he has brought a hammer</p><p>bonk as many employees on the head as you can before the '+SHIFT+'-second shift ends · 1 point each</p><p>◀ ▶ walk · ▲ ▼ climb ladders between IT, the office and HR · space swings the hammer · Z or the zoom button switches between the whole building and a close-up</p><p>they will run, and they know where the ladders are · IT mostly sleeps, and only gets up now and then</p><p class="blink">tap or press space to clock in</p>');}
+function showTitle(){state='title';hud();overlay('<h1>CXSTRASS</h1><p>the boss is doing his rounds · he has brought a hammer</p><p>1 point per bonk · the third bonk sends an employee flying · clear all '+CREW+' before the '+SHIFT+'-second shift ends</p><p>every level they run 10% faster</p><p>◀ ▶ walk · ▲ ▼ climb ladders between IT, the office and HR · space swings the hammer · Z or the zoom button switches between the whole building and a close-up</p><p>they will run, and they know where the ladders are · IT mostly sleeps, and only gets up now and then</p><p class="blink">tap or press space to clock in</p>');}
 onTap=()=>{if(state!=='play')newGame();};
 onKeyDown=k=>{if(k==='escape'){showTitle();return;}if(state!=='play'){if(k===' '||k==='enter')newGame();return;}if(k===' '||k==='x'||k==='enter')swing();else if(k==='z')zoomIn=!zoomIn;};
 hbtn('menu',showTitle);hbtn('zoom',()=>{zoomIn=!zoomIn;});touchKeys(DPAD,[[' ','🔨']]);
@@ -314,7 +317,7 @@ const ROOT=[47,47,47,47,50,50,50,50,50,50,50,50,50,50,50,50,54,54,54,54,54,54,54
 {let st=0;for(const [m,len] of TUNE){LEAD[st]=[m,len];st+=len;}}
 const STEPS=TUNE.reduce((a,n)=>a+n[1],0);
 function update(dt,t){
-  if(state==='play'){time-=dt;if(Math.ceil(time)!==Math.ceil(time+dt))hud();
+  if(state==='play'){if(staff.length){time-=dt;if(Math.ceil(time)!==Math.ceil(time+dt))hud();}
     beatT-=dt;if(beatT<=0&&!musicOk){beatT=Math.max(0.02,beatT+STEP);const i=beat++%STEPS,n=LEAD[i],root=ROOT[Math.floor(i/6)],g=i%6;
       if(n){tone(hz(n[0]),n[1]*STEP*0.92,'sawtooth',0.05);tone(hz(n[0]-12),n[1]*STEP*0.92,'square',0.02);}   // brass theme, doubled an octave down
       if(g===0||g===3||g===4)tone(hz(root-12),[0.26,0,0,0.08,0.17][g],'triangle',0.07);                        // galloping bass
@@ -323,8 +326,9 @@ function update(dt,t){
     if(b.lad){b.ly+=sy*3.4*dt;const lo=FY[b.lad[0]],hi=FY[b.lad[0]+1];if(b.ly>=hi){b.f=b.lad[0]+1;b.lad=null;}else if(b.ly<=lo){b.f=b.lad[0];b.lad=null;}b.ph+=Math.abs(sy)*dt*10;}
     else{if(sx){b.face=sx;b.x=clamp(b.x+sx*4.3*dt,-HX,HX);b.ph+=dt*11;}
       if(sy>0){const l=ladAt(b.f,b.x,true);if(l){b.lad=l;b.x=l[1];b.ly=FY[b.f]+0.02;}}else if(sy<0){const l=ladAt(b.f,b.x,false);if(l){b.lad=l;b.x=l[1];b.ly=FY[b.f]-0.02;}}}
-    const sp=3.1+Math.min(1.5,score*0.035);
-    for(const s of staff){s.safe=Math.max(0,s.safe-dt);if(s.stun>0){s.stun-=dt;if(s.stun<=0)s.safe=1.2;continue;}
+    const sp=3.1*Math.pow(1.1,level-1);   // every level they run 10% faster
+    for(const s of staff){if(s.fly){const f=s.fly;f.vy+=22*dt;f.x+=f.vx*dt;f.y+=f.vy*dt;f.rot+=dt*16;if(f.y>FY[2]+9){s.gone=true;scene.remove(s.mesh);}continue;}
+      s.safe=Math.max(0,s.safe-dt);if(s.stun>0){s.stun-=dt;if(s.stun<=0)s.safe=1.2;continue;}
       if(s.sleep>0){s.sleep-=dt;s.zt-=dt;if(s.zt<=0){s.zt=rand(1.4,2.6);popup('z',s.bed-0.4+Math.random()*0.3,FY[0]+1.3,0,'#9be8ff');}if(s.sleep<=0)s.awake=rand(3,6);continue;}
       if(s.it)s.awake-=dt;
       if(s.lad){s.ly+=s.ldir*3.2*dt;const lo=FY[s.lad[0]],hi=FY[s.lad[0]+1];if(s.ly>=hi){s.f=s.lad[0]+1;s.lad=null;}else if(s.ly<=lo){s.f=s.lad[0];s.lad=null;}continue;}
@@ -338,10 +342,13 @@ function update(dt,t){
         if(Math.abs(tx-s.x)<0.12){if(l){s.lad=l;s.x=l[1];s.ly=FY[s.f];s.ldir=-1;}else{s.x=s.bed;s.sleep=rand(8,15);s.dir=0;}}else{s.dir=Math.sign(tx-s.x);s.x+=s.dir*1.6*dt;s.ph+=dt*8;}}
       else{s.think-=dt;if(s.think<=0){s.think=rand(0.8,2.6);s.dir=rnd(3)-1;if(Math.random()<0.25){const l=ladAt(s.f,s.x,Math.random()<0.5);if(l){s.lad=l;s.x=l[1];s.ly=FY[s.f];s.ldir=l[0]===s.f?1:-1;}}}
         s.x=clamp(s.x+s.dir*1.3*dt,-HX,HX);if(Math.abs(s.x)>=HX)s.dir=-s.dir;if(s.dir)s.ph+=dt*7;}}
-    if(time<=0){state='over';if(score>best){best=score;saveBest(KEY,best);}hud();jingle(true);overlay('<h2>SHIFT OVER</h2><p>'+score+' heads bonked · best '+best+'</p><p>'+(score>=40?'employee of the month: you':score>=20?'productivity is, somehow, up':'HR would like a word')+'</p><p class="blink">tap or press space for another shift</p>',.5);}}
+    if(staff.some(q=>q.gone)){staff=staff.filter(q=>!q.gone);hud();}
+    if(!staff.length){if(nextT===0){nextT=2;jingle(true);popup('EVERYONE IS GONE · LEVEL '+(level+1),cam.pos.x,cam.pos.y+1,0,'#8dff5a');}else{nextT-=dt;if(nextT<=0){level++;startLevel();tone(110,0.4,'sawtooth',0.07,55);}}}
+    if(time<=0){state='over';if(score>best){best=score;saveBest(KEY,best);}hud();jingle(true);overlay('<h2>SHIFT OVER</h2><p>level '+level+' · '+score+' heads bonked · best '+best+'</p><p>'+(score>=40?'employee of the month: you':score>=20?'productivity is, somehow, up':'HR would like a word')+'</p><p class="blink">tap or press space for another shift</p>',.5);}}
   if(boss){const b=boss;bm.position.set(b.x,b.lad?b.ly:FY[b.f],0.2);bm.scale.x=b.lad?1:b.face;bm.userData.set(b.lad?(Math.sin(b.ph)>0?'climb0':'climb1'):(Math.sin(b.ph)>0?'walk0':'walk1'));
     const a=b.swing>0?Math.sin((1-b.swing/0.28)*Math.PI)*1.9:0.25+Math.sin(t*3)*0.08;ham.rotation.z=-a;ham.visible=!b.lad;}
-  for(const s of staff){const y=s.lad?s.ly:FY[s.f],m=s.mesh,down=s.stun>0,zz=s.sleep>0&&!down;if(s.dir)s.face=s.dir;
+  for(const s of staff){s.bumps.forEach((q,k)=>q.visible=s.hits>k);if(s.fly){s.mesh.position.set(s.fly.x,s.fly.y,0.3);s.mesh.rotation.z=s.fly.rot;s.mesh.scale.x=1;s.mesh.visible=true;s.mesh.userData.set('stun');s.stars.visible=false;continue;}
+    const y=s.lad?s.ly:FY[s.f],m=s.mesh,down=s.stun>0,zz=s.sleep>0&&!down;if(s.dir)s.face=s.dir;
     m.position.set(zz?s.bed+0.9:s.x,y+(zz?0.85+Math.sin(t*2+s.ph)*0.02:down?0.3:0),zz?-0.45:s.lad?0.1:-0.05);m.rotation.z=zz?Math.PI/2:down?1.35:0;m.scale.x=zz||s.lad||down?1:(s.face||1);
     m.userData.set(zz?'sleep':down?'stun':s.lad?(Math.sin(s.ly*7)>0?'climb0':'climb1'):(Math.sin(s.ph)>0?'walk0':'walk1'));
     s.stars.visible=down;s.stars.children.forEach((c,k)=>c.position.set(Math.cos(t*6+k*2.1)*0.4,Math.sin(t*6+k*2.1)*0.08,0.01));m.visible=s.safe<=0||Math.floor(t*14)%2===0;}
@@ -349,7 +356,7 @@ function update(dt,t){
   {const tanH=Math.tan(25*Math.PI/180),fit=17.5*Math.max(1,1.5/asp),dist=zoomIn?Math.min(fit,(asp<1?8.2:11)/(2*tanH*asp)):fit,vw=2*dist*tanH*asp,vh=2*dist*tanH,
      bx=boss?boss.x:0,by=boss?(boss.lad?boss.ly:FY[boss.f])+1:0.4,cx=vw>=16.4?0:clamp(bx,-8.2+vw/2,8.2-vw/2),cy=vh>=10.6?0.4:clamp(by,-4.7+vh/2,5.9-vh/2),q=Math.min(1,dt*5);
     cam.pos.x+=(cx-cam.pos.x)*q;cam.pos.y+=(cy-cam.pos.y)*q;cam.pos.z+=(dist-cam.pos.z)*q;cam.look.set(cam.pos.x,cam.pos.y,0);}}
-for(let i=0;i<7;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};showTitle();
+for(let i=0;i<CREW;i++)staff.push(mkStaff(i));boss={f:1,x:0,face:1,lad:null,ly:0,swing:0,cool:0,ph:0};showTitle();
 run(update);
 
 </script>
